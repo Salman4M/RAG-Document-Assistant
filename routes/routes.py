@@ -70,3 +70,8 @@ async def ask_question(request: AskRequest):
 async def clear_documents():
     clear()
     return {"message":"Vector store cleared successfully"}
+
+
+@router.get("/health")
+async def health():
+    return {"status": "ok"}

@@ -40,7 +40,7 @@ def trim_history(history: list=None) -> list:
 async def ask(question:str, context_chunks: list[dict], history: list= None )-> str:
     if history is None:
         history = []
-        
+
     context = build_context(context_chunks)
     
     system_prompt = f"""You are an engineering document assistant.
@@ -73,6 +73,7 @@ Context:
         
         # parse all lines, collect full content
         full_content = ""
+        print(response.text)
         for line in response.text.strip().split("\n"):
             line = line.strip()
             if not line:
@@ -85,3 +86,6 @@ Context:
                 continue
         
         return full_content if full_content else "I could not generate an answer."
+    
+{'model': 'qwen2.5', 'created_at': '2026-02-23T13:56:32.714972504Z',
+  'message': {'role': 'assistant', 'content': 'I could not find this information in the uploaded document.'}, 'done': True, 'done_reason': 'stop', 'total_duration': 46482115639, 'load_duration': 19111339252, 'prompt_eval_count': 1953, 'prompt_eval_duration': 23648915076, 'eval_count': 12, 'eval_duration': 3551022719}
