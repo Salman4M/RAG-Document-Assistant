@@ -1,11 +1,10 @@
 services:
   app:
     build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./chroma_db:/app/chroma_db
+    network_mode: "host"  
+    # ports:              
+    #  - "8000:8000"
     environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - ${OLLAMA_BASE_URL}
     env_file:
       - .env
