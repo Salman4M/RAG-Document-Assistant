@@ -66,13 +66,13 @@ def chunk_text(pages: list[dict], chunk_size: int = 1000, overlap: int = 200)->l
             chunk  = text[start:end]
 
             if chunk.strip():
-                chunk.append({
+                chunks.append({
                     "text":chunk,
                     "page_number":page_number,
                     "chunk_index":chunk_index
                 })
                 chunk_index+=1
-            
+            2
             start+=chunk_size - overlap
 
     return chunks

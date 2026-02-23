@@ -1,6 +1,6 @@
 import httpx
 from core.config import settings
-
+import json
 async def get_embedding(text:str) -> list[float]:
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -37,7 +37,10 @@ def trim_history(history: list=None) -> list:
     return history[-settings.max_history:]
 
 
-async def ask(question:str, context_chunks: list[dict], history: list= [] )-> str:
+async def ask(question:str, context_chunks: list[dict], history: list= None )-> str:
+    if history is None:
+        history = []
+        
     context = build_context(context_chunks)
     
     system_prompt = f"""You are an engineering document assistant.
@@ -55,15 +58,30 @@ Context:
     messages = [{"role":"system","content":system_prompt}]
     messages+=trimmed_history
     messages.append({"role":"user","content":question})
-
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{settings.ollama_base_url}/api/chat",
             json={
-                "model":settings.ollama_model,
-                "messages":messages,
-                "steam":False
-            },timeout=120.0
-            )
+                "model": settings.ollama_model,
+                "messages": messages,
+                "stream": False,
+                "options": {"num_predict": 1024}
+            },
+            timeout=120.0
+        )
         response.raise_for_status()
-        return response.json()["message"]["content"]
+        
+        # parse all lines, collect full content
+        full_content = ""
+        for line in response.text.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                if "message" in data and data["message"].get("content"):
+                    full_content += data["message"]["content"]
+            except json.JSONDecodeError:
+                continue
+        
+        return full_content if full_content else "I could not generate an answer."
