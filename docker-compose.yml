@@ -1,10 +1,28 @@
 services:
-  app:
-    build: .
-    network_mode: "host"  
-    # ports:              
-    #  - "8000:8000"
+  db:
+    image: postgres:16
     environment:
-      - ${OLLAMA_BASE_URL}
-    env_file:
-      - .env
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: rag_password
+      POSTGRES_DB: rag_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  # app:
+  #   build: .
+  #   network_mode: "host"  
+  #   # ports:              
+  #   #  - "8000:8000"
+  #   volumes:
+  #     - ./chroma_db:/app/chroma_db
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     - db
+    
+
+volumes:
+  postgres_data:
+
+  
