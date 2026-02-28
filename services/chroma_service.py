@@ -4,57 +4,50 @@ from core.config import settings
 client = chromadb.PersistentClient(path=settings.chroma_path)
 collection = client.get_or_create_collection(name="documents")
 
-def store_chunks(chunks:list[dict],embeddings: list[list[float]], filename:str)->int:
-    ids = []
-    documents = []
-    metadatas = []
-    embeddings_list = []
-
-    for i, (chunk,embedding) in enumerate(zip(chunks, embeddings)):
-        chunk_id = f"{filename}_{chunk['page_number']}_{chunk['chunk_index']}"
-        ids.append(chunk_id)
-        documents.append(chunk["text"])
-        metadatas.append({
+def store_chunks(chunks:list[dict],embeddings: list[list[float]], filename:str, user_id: int)->int:
+    ids = [f"{user_id}_{filename}_{chunk['chunk_index']}_page{chunk['page_number']}"for chunk in chunks]
+    documents = [chunk["text"] for chunk in chunks]
+    metadatas = [
+        {
             "filename":filename,
             "page_number":chunk["page_number"],
-            "chunk_index":chunk["chunk_index"]
-        })
-        embeddings_list.append(embedding)
+            "chunk_index":chunk["chunk_index"],
+            "user_id":user_id
+        }
+        for chunk in chunks
+    ]
 
     collection.add(
         ids=ids,
         documents=documents,
         metadatas=metadatas,
-        embeddings=embeddings_list
+        embeddings=embeddings
     )
 
-    return len(ids)
+    return len(chunks)
 
-def query(question_embedding: list[float], n_results: int = None) -> list[dict]:
-    #to check manually
-    if n_results is None:
-        n_results = settings.top_k_results
-    
+def query(embedding: list[float],user_id: int, n_results: int = 4) -> list[dict]:    
     results = collection.query(
-        query_embeddings=[question_embedding],
-        n_results=n_results
+        query_embeddings=[embedding],
+        n_results=n_results,
+        where={"user_id":user_id} # filter by user id
     )
     chunks = []
 
-    for i in range(len(results["documents"][0])):
+    for i,doc in enumerate(results["documents"][0]):
         chunks.append({
-            "text":results["documents"][0][i],
-            "filename":results["metadatas"][0][i]["filename"],
+            "text":doc,
             "page_number":results["metadatas"][0][i]["page_number"],
-            "chunk_index":results["metadatas"][0][i]["chunk_index"],
+            "filename":results["metadatas"][0][i]["filename"],
         })
 
     return chunks
 
-def clear() -> None:
-    global collection
-    client.delete_collection(name="documents")
-    collection = client.get_or_create_collection(name="documents")
+def clear(user_id:int) -> None:
+    results = collection.get(where={"user_id":user_id})
+    if results["ids"]:
+        collection.delete(ids=results["ids"])
 
-def has_documents() -> bool:
-    return collection.count() > 0
+def has_documents(user_id:int) -> bool:
+    results = collection.get(where={"user_id":user_id})
+    return len(results["ids"]) > 0

@@ -1,5 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException,Depends
 from pydantic import BaseModel
+from core.security import get_current_user
+from models.user import User
 
 from services.pdf_service import extract_content_by_page,chunk_text
 from services.ollama_service import get_embeddings_batch,get_embedding,ask
@@ -19,7 +21,10 @@ class AskResponse(BaseModel):
     sources:list[dict]
 
 @router.post("/upload")
-async def upload(file: UploadFile=File(...)):
+async def upload(
+    file: UploadFile=File(...),
+    current_user: User = Depends(get_current_user)
+    ):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400,detail="Only PDF files are accepted")
 
@@ -36,7 +41,7 @@ async def upload(file: UploadFile=File(...)):
     chunks = chunk_text(pages,settings.chunk_size,settings.chunk_overlap)
     texts = [chunk["text"] for chunk in chunks]
     embeddings = await get_embeddings_batch(texts)
-    stored = store_chunks(chunks, embeddings, file.filename)
+    stored = store_chunks(chunks, embeddings, file.filename, current_user.id)
 
     return {
         "message":"PDF proccessed successfully",
@@ -45,14 +50,17 @@ async def upload(file: UploadFile=File(...)):
     }
 
 @router.post("/ask",response_model=AskResponse)
-async def ask_question(request: AskRequest):
+async def ask_question(
+    request: AskRequest,
+    current_user: User = Depends(get_current_user)
+    ):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail = "Question cannot be empty")
-    if not has_documents():
+    if not has_documents(current_user.id):
         raise HTTPException(status_code=404, detail="No document uploaded yet")
 
     question_embedding = await get_embedding(request.question)
-    chunks = query(question_embedding)
+    chunks = query(question_embedding, current_user.id)
     answer = await ask(request.question,chunks,request.history or [])
 
     sources=[
@@ -67,8 +75,8 @@ async def ask_question(request: AskRequest):
     return AskResponse(answer=answer,sources=sources)
 
 @router.delete("/clear")
-async def clear_documents():
-    clear()
+async def clear_documents(current_user: User =  Depends(get_current_user)):
+    clear(current_user.id)
     return {"message":"Vector store cleared successfully"}
 
 
