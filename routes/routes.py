@@ -1,7 +1,10 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException,Depends
 from pydantic import BaseModel
 from core.security import get_current_user
-from models.user import User
+from models.user import User,Conversation
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from core.database import get_db
 
 from services.pdf_service import extract_content_by_page,chunk_text
 from services.ollama_service import get_embeddings_batch,get_embedding,ask
@@ -14,7 +17,6 @@ router = APIRouter()
 
 class AskRequest(BaseModel):
     question:str
-    history: list = None
 
 class AskResponse(BaseModel):
     answer:str
@@ -52,16 +54,37 @@ async def upload(
 @router.post("/ask",response_model=AskResponse)
 async def ask_question(
     request: AskRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
     ):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail = "Question cannot be empty")
     if not has_documents(current_user.id):
         raise HTTPException(status_code=404, detail="No document uploaded yet")
 
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.user_id==current_user.id)
+        .order_by(Conversation.created_at.desc())
+        .limit(10)
+    )
+    past = result.scalars().all()
+
+    history = []
+    for conv in reversed(past):
+        history.append({"role":"user","context":conv.question})
+        history.append({"role":"assistant","context":conv.answer})
+
     question_embedding = await get_embedding(request.question)
     chunks = query(question_embedding, current_user.id)
-    answer = await ask(request.question,chunks,request.history or [])
+    answer = await ask(request.question,chunks,history)
+
+    db.add(Conversation(
+        user_id=current_user.id,
+        question=request.question,
+        answer=answer
+    ))
+    await db.commit()
 
     sources=[
         {
