@@ -13,6 +13,8 @@ Built from scratch without LangChain — every component implemented manually to
 - **Conversation memory** — remembers previous questions automatically
 - **Personal facts memory** — extracts and remembers facts you share about yourself
 - **Semantic search** — finds relevant chunks using vector embeddings
+- **Reranking** — cross-encoder reranker improves retrieval accuracy after vector search
+
 
 
 ## How It Works
@@ -21,9 +23,10 @@ Built from scratch without LangChain — every component implemented manually to
 2. Text chunked into 1000-char pieces with 200-char overlap
 3. Each chunk embedded via Ollama (nomic-embed-text) and stored in ChromaDB with user_id
 4. On query → question embedded → ChromaDB finds 4 most relevant chunks for that user
-5. Last 10 conversations + personal facts injected into system prompt
-6. Qwen2.5 answers grounded in document context
-7. Facts extracted from conversation and stored for future context
+5. Cross-encoder reranker scores all 10 by true relevance → keeps best 4
+6. Last 10 conversations + personal facts injected into system prompt
+7. Qwen2.5 answers grounded in document context
+8. Facts extracted from conversation and stored for future context
 
 ## Tech Stack
 
@@ -31,7 +34,9 @@ Built from scratch without LangChain — every component implemented manually to
 - **PostgreSQL + SQLAlchemy** — user data, conversations, memories
 - **ChromaDB** — vector database for semantic search
 - **Ollama** — local LLM inference (Qwen2.5 + nomic-embed-text)
+- **sentence-transformers** — cross-encoder reranking
 - **pdfplumber / pypdf** — PDF text extraction
+- **Alembic** — database migrations
 - **Docker** — containerization
 
 ## Project Structure
@@ -57,7 +62,8 @@ rag-document-assistant/
 ├── services/
 │   ├── pdf_service.py     # extraction and chunking
 │   ├── ollama_service.py  # embeddings, generation, fact extraction
-│   └── chroma_service.py  # vector store with user filtering
+│   ├──  chroma_service.py  # vector store with user filtering
+│   └── reranker_service.py # cross-encoder reranking
 ├── routes/
 │   ├── routes.py          # document endpoints
 │   └── auth.py            # auth endpoints
@@ -84,7 +90,6 @@ cd rag-document-asistant
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements_docker.txt
-uvicorn main:app --reload
 ```
 
 # start PostgreSQL
@@ -103,18 +108,19 @@ Open http://localhost:8000/docs
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/auth/register` |   | Create account |
-| POST | `/auth/login` |   | Get tokens |
-| POST | `/auth/refresh` |   | Refresh access token |
-| POST | `/auth/logout` |   | Invalidate refresh token |
-| GET | `/auth/me` |  | Current user info |
-| POST | `/upload` | Upload a PDF |
-| DELETE | `/documents/{filename}` |   | Delete specific document |
-| POST | `/ask` | Ask a question |
-| DELETE | `/clear` | Clear all your documents |
-| GET | `/health` | Health check |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/auth/register` | NO | Create account |
+| POST | `/auth/login` | NO  | Get tokens |
+| POST | `/auth/refresh` | NO  | Refresh access token |
+| POST | `/auth/logout` |  YES | Invalidate refresh token |
+| GET | `/auth/me` | YES | Current user info |
+| POST | `/upload` | YES |Upload a PDF |
+| GET | `/documents` | YES | List your documents |
+| DELETE | `/documents/{filename}` | YES | Delete specific document |
+| POST | `/ask` | YES | Ask a question |
+| DELETE | `/clear` | YES | Clear all your documents |
+| GET | `/health` | NO | Health check |
 
 ## Tests
 ```bash
