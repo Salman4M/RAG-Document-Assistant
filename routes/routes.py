@@ -1,14 +1,14 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException,Depends
 from pydantic import BaseModel
 from core.security import get_current_user
-from models.user import User,Conversation
+from models.user import User,Conversation,UserMemory
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from core.database import get_db
 from services.chroma_service import store_chunks, query, clear, has_documents, collection
 
 from services.pdf_service import extract_content_by_page,chunk_text
-from services.ollama_service import get_embeddings_batch,get_embedding,ask
+from services.ollama_service import get_embeddings_batch,get_embedding,ask,extract_facts
 from services.chroma_service import store_chunks,query,clear,has_documents
 from core.config import settings
 
@@ -103,18 +103,35 @@ async def ask_question(
 
     history = []
     for conv in reversed(past):
-        history.append({"role":"user","context":conv.question})
-        history.append({"role":"assistant","context":conv.answer})
+        history.append({"role":"user","content":conv.question})
+        history.append({"role":"assistant","content":conv.answer})
+
+    mm_result = await db.execute(
+        select(UserMemory)
+        .where(UserMemory.user_id==current_user.id)
+        .order_by(UserMemory.created_at.desc())
+        .limit(20)
+        )
+    memories = mm_result.scalars().all()
+    memory_context = ""
+    if memories:
+        facts = "\n".join(f"- {m.fact}" for m in memories)
+        memory_context = f"\n\nPersonal facts about the user: \n{facts}"
 
     question_embedding = await get_embedding(request.question)
     chunks = query(question_embedding, current_user.id)
-    answer = await ask(request.question,chunks,history)
+    answer = await ask(request.question,chunks,history,memory_context)
 
     db.add(Conversation(
         user_id=current_user.id,
         question=request.question,
         answer=answer
     ))
+
+    facts = await extract_facts(request.question, answer)
+    for fact in facts:
+        db.add(UserMemory(user_id=current_user.id,fact=fact))
+
     await db.commit()
 
     sources=[
