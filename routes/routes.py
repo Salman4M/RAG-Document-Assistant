@@ -5,6 +5,7 @@ from models.user import User,Conversation
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from core.database import get_db
+from services.chroma_service import store_chunks, query, clear, has_documents, collection
 
 from services.pdf_service import extract_content_by_page,chunk_text
 from services.ollama_service import get_embeddings_batch,get_embedding,ask
@@ -50,6 +51,36 @@ async def upload(
         "chunks_stored":stored,
         "filename":file.filename
     }
+
+
+@router.get("/documents")
+async def list_documents(current_user: User = Depends(get_current_user)):
+    results = collection.get(where={"user_id":current_user.id})
+    if not results["ids"]:
+        return {"documents":[]}
+
+    filenames = list(set(m["filename"] for m in results["metadatas"]))
+    return {"documents":filenames}
+
+
+@router.delete("/documents/{filename}")
+async def delete_document(
+    filename:str,
+    current_user: User = Depends(get_current_user)
+):
+    results = collection.get(where={
+        "$and":[
+            {"user_id":current_user.id},
+            {"filename":filename}
+        ]
+    }
+    )
+    if not results["ids"]:
+        raise HTTPException(status_code=404,detail="Document not found")
+    
+    collection.delete(ids=results["ids"])
+    return {"message": f"{filename} deleted successfully"}
+
 
 @router.post("/ask",response_model=AskResponse)
 async def ask_question(
