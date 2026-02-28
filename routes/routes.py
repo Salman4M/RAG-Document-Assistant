@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from core.database import get_db
 from services.chroma_service import store_chunks, query, clear, has_documents, collection
+from services.reranker_service import rerank
 
 from services.pdf_service import extract_content_by_page,chunk_text
 from services.ollama_service import get_embeddings_batch,get_embedding,ask,extract_facts
@@ -119,7 +120,8 @@ async def ask_question(
         memory_context = f"\n\nPersonal facts about the user: \n{facts}"
 
     question_embedding = await get_embedding(request.question)
-    chunks = query(question_embedding, current_user.id)
+    chunks = query(question_embedding, current_user.id, n_results=10) 
+    chunks = rerank(request.question, chunks, top_k=4)  # rerank down to 4
     answer = await ask(request.question,chunks,history,memory_context)
 
     db.add(Conversation(
