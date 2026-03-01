@@ -12,7 +12,7 @@ from services.ollama_service import get_embeddings_batch,get_embedding,ask,extra
 from services.chroma_service import store_chunks,query,clear,has_documents
 from core.config import settings
 from core.limiter import limiter
-
+import asyncio
 
 
 
@@ -49,7 +49,7 @@ async def upload(
     chunks = chunk_text(pages,settings.chunk_size,settings.chunk_overlap)
     texts = [chunk["text"] for chunk in chunks]
     embeddings = await get_embeddings_batch(texts)
-    stored = store_chunks(chunks, embeddings, file.filename, current_user.id)
+    stored = await asyncio.to_thread(store_chunks,chunks, embeddings, file.filename, current_user.id)
 
     return {
         "message":"PDF proccessed successfully",
@@ -57,35 +57,6 @@ async def upload(
         "filename":file.filename
     }
 
-
-@router.get("/documents")
-@limiter.limit("5/hour")
-async def list_documents(request:Request,current_user: User = Depends(get_current_user)):
-    results = collection.get(where={"user_id":current_user.id})
-    if not results["ids"]:
-        return {"documents":[]}
-
-    filenames = list(set(m["filename"] for m in results["metadatas"]))
-    return {"documents":filenames}
-
-
-@router.delete("/documents/{filename}")
-async def delete_document(
-    filename:str,
-    current_user: User = Depends(get_current_user)
-):
-    results = collection.get(where={
-        "$and":[
-            {"user_id":current_user.id},
-            {"filename":filename}
-        ]
-    }
-    )
-    if not results["ids"]:
-        raise HTTPException(status_code=404,detail="Document not found")
-    
-    collection.delete(ids=results["ids"])
-    return {"message": f"{filename} deleted successfully"}
 
 
 @router.post("/ask",response_model=AskResponse)
@@ -98,7 +69,7 @@ async def ask_question(
     ):
     if not request_body.question.strip():
         raise HTTPException(status_code=400, detail = "Question cannot be empty")
-    if not has_documents(current_user.id):
+    if not await asyncio.to_thread(has_documents,current_user.id):
         raise HTTPException(status_code=404, detail="No document uploaded yet")
 
     result = await db.execute(
@@ -127,7 +98,7 @@ async def ask_question(
         memory_context = f"\n\nPersonal facts about the user: \n{facts}"
 
     question_embedding = await get_embedding(request_body.question)
-    chunks = query(question_embedding, current_user.id, n_results=10) 
+    chunks = await asyncio.to_thread(query,question_embedding, current_user.id, n_results=10) 
     chunks = rerank(request_body.question, chunks, top_k=4)  # rerank down to 4
     answer = await ask(request_body.question,chunks,history,memory_context)
 
@@ -154,10 +125,41 @@ async def ask_question(
     ]
     return AskResponse(answer=answer,sources=sources)
 
+
+@router.get("/documents")
+@limiter.limit("5/hour")
+async def list_documents(request:Request,current_user: User = Depends(get_current_user)):
+    results = await asyncio.to_thread(collection.get,where={"user_id":current_user.id})
+    if not results["ids"]:
+        return {"documents":[]}
+
+    filenames = list(set(m["filename"] for m in results["metadatas"]))
+    return {"documents":filenames}
+
+
+@router.delete("/documents/{filename}")
+async def delete_document(
+    filename:str,
+    current_user: User = Depends(get_current_user)
+):
+    results = await asyncio.to_thread(collection.get,where={
+        "$and":[
+            {"user_id":current_user.id},
+            {"filename":filename}
+        ]
+    }
+    )
+    if not results["ids"]:
+        raise HTTPException(status_code=404,detail="Document not found")
+    
+    await asyncio.to_thread(collection.delete,ids=results["ids"])
+    return {"message": f"{filename} deleted successfully"}
+
 @router.delete("/clear")
 async def clear_documents(current_user: User =  Depends(get_current_user)):
-    clear(current_user.id)
+    await asyncio.to_thread(clear,current_user.id)
     return {"message":"Vector store cleared successfully"}
+
 
 
 @router.get("/health")
