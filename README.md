@@ -14,6 +14,7 @@ Built from scratch without LangChain — every component implemented manually to
 - **Personal facts memory** — extracts and remembers facts you share about yourself
 - **Semantic search** — finds relevant chunks using vector embeddings
 - **Reranking** — cross-encoder reranker improves retrieval accuracy after vector search
+- **Rate limiting** — per-user request limits (20/min on ask, 5/hour on upload)
 
 
 
@@ -21,7 +22,7 @@ Built from scratch without LangChain — every component implemented manually to
 
 1. Upload a PDF → text extracted page by page
 2. Text chunked into 1000-char pieces with 200-char overlap
-3. Each chunk embedded via Ollama (nomic-embed-text) and stored in ChromaDB with user_id
+3. Each chunk embedded via fastembed (BAAI/bge-small-en-v1.5) and stored in ChromaDB with user_id
 4. On query → question embedded → ChromaDB finds 4 most relevant chunks for that user
 5. Cross-encoder reranker scores all 10 by true relevance → keeps best 4
 6. Last 10 conversations + personal facts injected into system prompt
@@ -48,13 +49,15 @@ Built from scratch without LangChain — every component implemented manually to
 - **Alembic** — database migrations
 - **Docker** — containerization
 
-## Project Structure
+```
 ```
 rag-document-assistant/
 ├── core/
 │   ├── config.py          # settings
 │   ├── database.py        # SQLAlchemy async engine
-│   └── security.py        # JWT + password hashing
+│   ├── security.py        # JWT + password hashing
+│   └── limiter.py         # rate limiting key function
+
 ├── models/
 │   └── user.py            # User, RefreshToken, Conversation, UserMemory
 ├── schemas/
@@ -121,6 +124,18 @@ Open http://localhost:8000/docs
 | POST | `/ask` | YES | Ask a question |
 | DELETE | `/clear` | YES | Clear all your documents |
 | GET | `/health` | NO | Health check |
+```
+
+## Rate Limiting
+
+Limits are applied per authenticated user (by user ID, not IP):
+
+| Endpoint | Limit |
+|----------|-------|
+| `POST /ask` | 20 requests/minute |
+| `POST /upload` | 5 requests/hour |
+
+Exceeding the limit returns `429 Too Many Requests`.
 
 ## Tests
 ```bash

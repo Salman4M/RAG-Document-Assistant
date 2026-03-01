@@ -1,27 +1,54 @@
 import httpx
 from core.config import settings
 import json
-async def get_embedding(text:str) -> list[float]:
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{settings.ollama_base_url}/api/embeddings",
-            json={
-                "model":settings.ollama_embedding_model,
-                "prompt":text
-            },
-            timeout=30.0
-        )
-        response.raise_for_status()
-        return response.json()["embedding"]
+import asyncio
+from fastembed import TextEmbedding
+
+_embed_model = None
+
+def get_embed_model():
+    global _embed_model
+    if _embed_model is None:
+        _embed_model = TextEmbedding("BAAI/bge-small-en-v1.5")
+    return _embed_model
+
+
+async def get_embedding(text: str) -> list[float]:
+    model = get_embed_model()
+    embeddings = list(model.embed([text]))
+    return embeddings[0].tolist()
+
+async def get_embeddings_batch(texts:list[str]) -> list[list[float]]:
+    model = get_embed_model()
+    # # run it in thread pool so it doesn't block the event loop
+    loop = asyncio.get_event_loop()
+    embeddings = await loop.run_in_executor(
+        None, lambda: list(model.embed(texts))
+    )
+
+    return [e.tolist()for e in embeddings]
+
+# async def get_embedding(text:str) -> list[float]:
+#     async with httpx.AsyncClient() as client:
+#         response = await client.post(
+#             f"{settings.ollama_base_url}/api/embeddings",
+#             json={
+#                 "model":settings.ollama_embedding_model,
+#                 "prompt":text
+#             },
+#             timeout=30.0
+#         )
+#         response.raise_for_status()
+#         return response.json()["embedding"]
     
 
-async def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
-    embeddings = []
-    for text in texts:
-        embedding = await get_embedding(text)
-        embeddings.append(embedding)
+# async def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
+#     embeddings = []
+#     for text in texts:
+#         embedding = await get_embedding(text)
+#         embeddings.append(embedding)
     
-    return embeddings
+#     return embeddings
 
 def build_context(chunks: list[dict]) -> str:
     parts = []
@@ -138,3 +165,20 @@ Return only JSON array, nothing else:"""
         except Exception:
             return []
         
+
+_embedding_semaphore = asyncio.Semaphore(10) # max 10 concurrent
+
+
+#gpu batch acceleration  for embeddings
+async def get_embedding_with_limit(text: str) -> list[float]:
+    async with _embedding_semaphore:
+        return await get_embedding(text)
+
+async def get_emeddings_batch(texts: list[str])-> list[list[float]]:
+    tasks = [get_embedding_with_limit(text) for text in texts]    
+    return await asyncio.gather(*tasks)
+
+
+
+    
+

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException,Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException,Depends,Request
 from pydantic import BaseModel
 from core.security import get_current_user
 from models.user import User,Conversation,UserMemory
@@ -7,11 +7,13 @@ from sqlalchemy import select
 from core.database import get_db
 from services.chroma_service import store_chunks, query, clear, has_documents, collection
 from services.reranker_service import rerank
-
 from services.pdf_service import extract_content_by_page,chunk_text
 from services.ollama_service import get_embeddings_batch,get_embedding,ask,extract_facts
 from services.chroma_service import store_chunks,query,clear,has_documents
 from core.config import settings
+from core.limiter import limiter
+
+
 
 
 router = APIRouter()
@@ -25,7 +27,9 @@ class AskResponse(BaseModel):
     sources:list[dict]
 
 @router.post("/upload")
+@limiter.limit("5/hour")
 async def upload(
+    request: Request,
     file: UploadFile=File(...),
     current_user: User = Depends(get_current_user)
     ):
@@ -55,7 +59,8 @@ async def upload(
 
 
 @router.get("/documents")
-async def list_documents(current_user: User = Depends(get_current_user)):
+@limiter.limit("5/hour")
+async def list_documents(request:Request,current_user: User = Depends(get_current_user)):
     results = collection.get(where={"user_id":current_user.id})
     if not results["ids"]:
         return {"documents":[]}
@@ -84,12 +89,14 @@ async def delete_document(
 
 
 @router.post("/ask",response_model=AskResponse)
+@limiter.limit("20/minute")
 async def ask_question(
-    request: AskRequest,
+    request: Request,
+    request_body: AskRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
     ):
-    if not request.question.strip():
+    if not request_body.question.strip():
         raise HTTPException(status_code=400, detail = "Question cannot be empty")
     if not has_documents(current_user.id):
         raise HTTPException(status_code=404, detail="No document uploaded yet")
@@ -119,18 +126,18 @@ async def ask_question(
         facts = "\n".join(f"- {m.fact}" for m in memories)
         memory_context = f"\n\nPersonal facts about the user: \n{facts}"
 
-    question_embedding = await get_embedding(request.question)
+    question_embedding = await get_embedding(request_body.question)
     chunks = query(question_embedding, current_user.id, n_results=10) 
-    chunks = rerank(request.question, chunks, top_k=4)  # rerank down to 4
-    answer = await ask(request.question,chunks,history,memory_context)
+    chunks = rerank(request_body.question, chunks, top_k=4)  # rerank down to 4
+    answer = await ask(request_body.question,chunks,history,memory_context)
 
     db.add(Conversation(
         user_id=current_user.id,
-        question=request.question,
+        question=request_body.question,
         answer=answer
     ))
 
-    facts = await extract_facts(request.question, answer)
+    facts = await extract_facts(request_body.question, answer)
     for fact in facts:
         db.add(UserMemory(user_id=current_user.id,fact=fact))
 
