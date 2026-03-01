@@ -7,8 +7,9 @@ _model = None
 def get_reranker():
     global _model
     if _model is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        _model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2",device=device)
+        # device = "cuda" if torch.cuda.is_available() else "cpu"
+        # _model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2",device=device)
+        _model = CrossEncoder("BAAI/bge-reranker-base", device="cpu")
     return _model
 
 
