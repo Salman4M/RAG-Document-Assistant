@@ -34,7 +34,8 @@ Built from scratch without LangChain — every component implemented manually to
 - **FastAPI** — REST API framework
 - **PostgreSQL + SQLAlchemy** — user data, conversations, memories
 - **ChromaDB** — vector database for semantic search
-- **Ollama** — local LLM inference (Qwen2.5 + nomic-embed-text)
+- **Ollama** — local LLM inference (Qwen2.5)
+- **fastembed** — vector embedding
 - **sentence-transformers** — cross-encoder reranking
 - **pdfplumber / pypdf** — PDF text extraction
 - **Alembic** — database migrations
