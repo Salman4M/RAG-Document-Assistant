@@ -52,7 +52,7 @@ async def login(form_data:OAuth2PasswordRequestForm = Depends(), db: AsyncSessio
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=201,detail="Invail credenticals")
+        raise HTTPException(status_code=401,detail="Invalid credenticals")
     
     access_token = create_access_token({"sub":str(user.id)})
     refresh_token = create_refresh_token({"sub":str(user.id)})
