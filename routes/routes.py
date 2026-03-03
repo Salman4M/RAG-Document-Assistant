@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException,Depends,Request
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request, BackgroundTasks
 from pydantic import BaseModel
 from core.security import get_current_user
 from models.user import User,Conversation,UserMemory
@@ -13,8 +13,9 @@ from services.chroma_service import store_chunks,query,clear,has_documents
 from core.config import settings
 from core.limiter import limiter
 import asyncio
-
-
+from sse_starlette.sse import EventSourceResponse
+from services.progress_service import create_task, update_progress,stream_progress
+import uuid
 
 router = APIRouter()
 
@@ -31,7 +32,8 @@ class AskResponse(BaseModel):
 async def upload(
     request: Request,
     file: UploadFile=File(...),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None
     ):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400,detail="Only PDF files are accepted")
@@ -41,21 +43,49 @@ async def upload(
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
     
-    pages = extract_content_by_page(file_bytes)
-
-    if not pages:
-        raise HTTPException(status_code=400, detail = "Could not extract any content from PDF")
+    task_id = str(uuid.uuid4())
+    create_task(task_id)
     
-    chunks = chunk_text(pages,settings.chunk_size,settings.chunk_overlap)
-    texts = [chunk["text"] for chunk in chunks]
-    embeddings = await get_embeddings_batch(texts)
-    stored = await asyncio.to_thread(store_chunks,chunks, embeddings, file.filename, current_user.id)
+    asyncio.create_task(
+        process_upload(file_bytes,file.filename, current_user.id, task_id)
+    )
+    return {"task_id":task_id,"message":"Upload started"}
 
-    return {
-        "message":"PDF proccessed successfully",
-        "chunks_stored":stored,
-        "filename":file.filename
-    }
+async def process_upload(file_bytes: bytes, filename: str, user_id: int, task_id: str):
+    await asyncio.sleep(10)
+    try:
+        update_progress(task_id, "Extracting text from PDF...")
+        pages = extract_content_by_page(file_bytes)
+        if not pages:
+            update_progress(task_id, "error:Could not extract content")
+            update_progress(task_id,"done")
+            return
+        
+        update_progress(task_id, "Chunking text...")
+        chunks = chunk_text(pages, settings.chunk_size, settings.chunk_overlap)
+
+        update_progress(task_id, f"Generating embeddings for {len(chunks)} chunks...")
+        texts = [chunk["text"]for chunk in chunks]
+        embeddings = await get_embeddings_batch(texts)
+
+        update_progress(task_id, f"Storing in vector database...")
+        stored = await asyncio.to_thread(store_chunks, chunks, embeddings, filename, user_id)
+
+        update_progress(task_id,f"Done! {stored} chunk stored")
+        update_progress(task_id, "done")
+
+    except Exception as e:
+        update_progress(task_id, f"error: {str(e)}")
+        update_progress(task_id, "done")
+
+@router.get("/upload-progress/{task_id}")
+async def upload_progress(
+    task_id:str,
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    return EventSourceResponse(stream_progress(task_id))
+
 
 
 

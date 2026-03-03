@@ -15,6 +15,8 @@ Built from scratch without LangChain — every component implemented manually to
 - **Semantic search** — finds relevant chunks using vector embeddings
 - **Reranking** — cross-encoder reranker improves retrieval accuracy after vector search
 - **Rate limiting** — per-user request limits (20/min on ask, 5/hour on upload)
+- **Upload progress streaming** — real-time SSE progress updates during PDF processing
+
 
 
 
@@ -37,20 +39,14 @@ Built from scratch without LangChain — every component implemented manually to
 - **Ollama** — local LLM inference (Qwen2.5)
 - **fastembed** — vector embedding
 - **sentence-transformers** — cross-encoder reranking
+- **sse-starlette** — Server-Sent Events for upload progress streaming
+- **slowapi** — per-user rate limiting
 - **pdfplumber / pypdf** — PDF text extraction
 - **Alembic** — database migrations
 - **Docker** — containerization
 
-## Project Structure
-```
-- **FastAPI** — REST API
-- **PostgreSQL + SQLAlchemy** — user data, conversations, memories
-- **ChromaDB** — vector database
-- **Ollama** — local LLM inference (Qwen2.5 + nomic-embed-text)
-- **Alembic** — database migrations
-- **Docker** — containerization
 
-```
+## Project Structure
 ```
 rag-document-assistant/
 ├── core/
@@ -69,6 +65,7 @@ rag-document-assistant/
 │   ├──  chroma_service.py  # vector store with user filtering
 │   └── reranker_service.py # cross-encoder reranking
 ├── routes/
+│   └── progress_service.py     # SSE upload progress tracking
 │   ├── routes.py          # document endpoints
 │   └── auth.py            # auth endpoints
 ├── tests/
@@ -120,6 +117,7 @@ Open http://localhost:8000/docs
 | POST | `/auth/logout` |  YES | Invalidate refresh token |
 | GET | `/auth/me` | YES | Current user info |
 | POST | `/upload` | YES |Upload a PDF |
+| GET | `/upload-progress/{task_id}` | YES | Stream upload progress |
 | GET | `/documents` | YES | List your documents |
 | DELETE | `/documents/{filename}` | YES | Delete specific document |
 | POST | `/ask` | YES | Ask a question |
