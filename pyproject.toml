@@ -21,10 +21,13 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "python-jose[cryptography]>=3.5.0",
     "python-multipart>=0.0.22",
+    "pyyaml>=6.0.3",
+    "rich>=14.3.3",
     "ruff>=0.15.2",
     "sentence-transformers>=5.2.3",
     "slowapi>=0.1.9",
     "sqlalchemy>=2.0.47",
     "sse-starlette>=3.3.2",
+    "typer>=0.24.1",
     "uvicorn>=0.41.0",
 ]

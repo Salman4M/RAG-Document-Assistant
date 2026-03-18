@@ -93,7 +93,11 @@ Context:
                 "model": settings.ollama_model,
                 "messages": messages,
                 "stream": False,
-                "options": {"num_predict": 1024}
+                "options": {
+                    "num_predict": 1024,
+                    "temperature":0.7,
+                    "think":False
+                    }
             },
             timeout=120.0
         )

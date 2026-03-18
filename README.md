@@ -36,7 +36,7 @@ Built from scratch without LangChain — every component implemented manually to
 - **FastAPI** — REST API framework
 - **PostgreSQL + SQLAlchemy** — user data, conversations, memories
 - **ChromaDB** — vector database for semantic search
-- **Ollama** — local LLM inference (Qwen2.5)
+- **Ollama** — local LLM inference (Qwen3.8b)
 - **fastembed** — vector embedding
 - **sentence-transformers** — cross-encoder reranking
 - **sse-starlette** — Server-Sent Events for upload progress streaming
@@ -80,7 +80,7 @@ rag-document-assistant/
 - [Ollama](https://ollama.ai) running locally
 - Pull required models:
 ```bash
-ollama pull qwen2.5
+ollama pull qwen3.8b
 ollama pull nomic-embed-text
 ```
 
