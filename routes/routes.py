@@ -138,9 +138,9 @@ async def ask_question(
         answer=answer
     ))
 
-    facts = await extract_facts(request_body.question, answer)
-    for fact in facts:
-        db.add(UserMemory(user_id=current_user.id,fact=fact))
+    # facts = await extract_facts(request_body.question, answer)
+    # for fact in facts:
+    #     db.add(UserMemory(user_id=current_user.id,fact=fact))
 
     await db.commit()
 
